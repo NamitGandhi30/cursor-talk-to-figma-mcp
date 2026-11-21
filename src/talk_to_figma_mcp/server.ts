@@ -560,8 +560,12 @@ server.tool(
       .string()
       .optional()
       .describe("Optional parent node ID to append the text to"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Font family (default: Inter), e.g. 'Geist', 'Bricolage Grotesque', 'Geist Mono'"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId, fontFamily }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -572,6 +576,7 @@ server.tool(
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
         name: name || "Text",
         parentId,
+        fontFamily: fontFamily || "Inter",
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -611,7 +616,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
       });
       const typedResult = result as { name: string };
       return {
@@ -619,7 +624,7 @@ server.tool(
           {
             type: "text",
             text: `Set fill color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`,
           },
         ],
       };
@@ -653,7 +658,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
         weight: weight || 1,
       });
       const typedResult = result as { name: string };
@@ -662,7 +667,7 @@ server.tool(
           {
             type: "text",
             text: `Set stroke color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1}) with weight ${weight || 1}`,
           },
         ],
       };

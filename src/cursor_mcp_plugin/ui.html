@@ -529,7 +529,8 @@
 
           state.socket.onopen = () => {
             // Generate random channel name
-            const channelName = generateChannelName();
+            // Fixed channel so the agent can join without the user reading it out.
+            const channelName = "letssplit";
             console.log("Joining channel:", channelName);
             state.channel = channelName;
 
@@ -936,6 +937,9 @@
           2
         );
       }
+
+      // Auto-connect on open so no Connect click is needed.
+      setTimeout(() => { if (!state.connected) connectToServer(3055); }, 300);
     </script>
   </body>
 </html>

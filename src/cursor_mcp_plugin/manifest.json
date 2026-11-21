@@ -1,6 +1,6 @@
 {
-  "name": "Cursor MCP Plugin",
-  "id": "1485687494525374295",
+  "name": "Lets Split Figma Bridge",
+  "id": "letssplit-figma-bridge",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",

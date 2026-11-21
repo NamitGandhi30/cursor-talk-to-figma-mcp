@@ -781,7 +781,7 @@ async function createFrame(params) {
         g: parseFloat(fillColor.g) || 0,
         b: parseFloat(fillColor.b) || 0,
       },
-      opacity: parseFloat(fillColor.a) || 1,
+      opacity: (fillColor.a === undefined || fillColor.a === null ? 1 : parseFloat(fillColor.a)),
     };
     frame.fills = [paintStyle];
   }
@@ -795,7 +795,7 @@ async function createFrame(params) {
         g: parseFloat(strokeColor.g) || 0,
         b: parseFloat(strokeColor.b) || 0,
       },
-      opacity: parseFloat(strokeColor.a) || 1,
+      opacity: (strokeColor.a === undefined || strokeColor.a === null ? 1 : parseFloat(strokeColor.a)),
     };
     frame.strokes = [strokeStyle];
   }
@@ -845,6 +845,7 @@ async function createText(params) {
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
     name = "",
     parentId,
+    fontFamily = "Inter",
   } = params || {};
 
   // Map common font weights to Figma font styles
@@ -878,12 +879,19 @@ async function createText(params) {
   textNode.y = y;
   textNode.name = name || text;
   try {
-    await figma.loadFontAsync({
-      family: "Inter",
-      style: getFontStyle(fontWeight),
-    });
-    textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-    textNode.fontSize = parseInt(fontSize);
+    // Families name styles differently ("Semi Bold" vs "SemiBold"); try both, then fall back to Inter.
+    const style = getFontStyle(fontWeight);
+    const candidates = [
+      { family: fontFamily, style },
+      { family: fontFamily, style: style.replace(" ", "") },
+      { family: "Inter", style },
+    ];
+    let loaded = null;
+    for (const f of candidates) {
+      try { await figma.loadFontAsync(f); loaded = f; break; } catch (e) {}
+    }
+    if (loaded) textNode.fontName = loaded;
+    textNode.fontSize = parseFloat(fontSize);
   } catch (error) {
     console.error("Error setting font size", error);
   }
@@ -897,7 +905,7 @@ async function createText(params) {
       g: parseFloat(fontColor.g) || 0,
       b: parseFloat(fontColor.b) || 0,
     },
-    opacity: parseFloat(fontColor.a) || 1,
+    opacity: (fontColor.a === undefined || fontColor.a === null ? 1 : parseFloat(fontColor.a)),
   };
   textNode.fills = [paintStyle];
 
@@ -957,7 +965,7 @@ async function setFillColor(params) {
     r: parseFloat(r) || 0,
     g: parseFloat(g) || 0,
     b: parseFloat(b) || 0,
-    a: parseFloat(a) || 1,
+    a: (a === undefined || a === null ? 1 : parseFloat(a)),
   };
 
   // Set fill
@@ -2399,6 +2407,31 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
 }
 
 // Replace text in a specific node
+async function replaceFontFamily(rootId, opts) {
+  const { to, from, skipFrom } = opts || {};
+  if (!to) throw new Error("replace-font needs 'to'");
+  const root = await figma.getNodeByIdAsync(rootId);
+  if (!root) throw new Error(`Node not found: ${rootId}`);
+  const fonts = await figma.listAvailableFontsAsync();
+  const styles = fonts.filter((f) => f.fontName.family === to).map((f) => f.fontName.style);
+  if (!styles.length) throw new Error(`Font family not available: ${to}`);
+  const norm = (s) => s.toLowerCase().replace(/\s+/g, "");
+  const pick = (style) => styles.find((s) => norm(s) === norm(style)) || styles.find((s) => norm(s) === "regular") || styles[0];
+  const texts = root.type === "TEXT" ? [root] : root.findAllWithCriteria({ types: ["TEXT"] });
+  let changed = 0, skipped = 0;
+  for (const t of texts) {
+    if (t.fontName === figma.mixed) { skipped++; continue; }
+    const fam = t.fontName.family;
+    if (fam === to || (from && !from.includes(fam)) || (skipFrom && skipFrom.includes(fam))) { skipped++; continue; }
+    const target = { family: to, style: pick(t.fontName.style) };
+    await figma.loadFontAsync(t.fontName);
+    await figma.loadFontAsync(target);
+    t.fontName = target;
+    changed++;
+  }
+  return { success: true, changed, skipped, total: texts.length };
+}
+
 async function setMultipleTextContents(params) {
   const { nodeId, text } = params || {};
   const commandId = params.commandId || generateCommandId();
@@ -2419,6 +2452,13 @@ async function setMultipleTextContents(params) {
     );
 
     throw new Error(errorMsg);
+  }
+
+  // Local extension: a single entry whose text is "@@replace-font {json}" swaps font families
+  // across the subtree instead of setting text. json: { to, from?: [families], skipFrom?: [families] }
+  if (text.length === 1 && typeof text[0].text === "string" && text[0].text.startsWith("@@replace-font")) {
+    const opts = JSON.parse(text[0].text.slice("@@replace-font".length).trim() || "{}");
+    return await replaceFontFamily(nodeId, opts);
   }
 
   console.log(
